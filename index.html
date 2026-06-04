@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Смета-Стройка AI Калькулятор</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;600;700&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+
+  <link rel="stylesheet" href="styles.css"/>
+</head>
+<body>
+  <div id="root">
+    <div style="padding:32px;font-family:Inter,Arial,sans-serif;color:#0f172a">
+      Запускаем Смета-Стройка AI Калькулятор...
+    </div>
+  </div>
+
+  <script>
+    (function bootstrap() {
+      if (window.location.protocol === "file:") {
+        var root = document.getElementById("root");
+        if (root) {
+          root.innerHTML = '<div style="padding:32px;font-family:Inter,Arial,sans-serif;color:#0f172a"><h1 style="font-size:22px;margin:0 0 8px">Открываю локальный сервер</h1><p style="margin:0;color:#475569">Прямое открытие index.html через file:// не поддерживает загрузку JSX. Сейчас страница переключится на http://127.0.0.1:5173/.</p></div>';
+        }
+        window.location.replace("http://127.0.0.1:5173/");
+        return;
+      }
+
+      document.write('<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"><\/script>');
+      document.write('<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"><\/script>');
+      document.write('<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"><\/script>');
+
+      [
+        "tweaks-panel.jsx",
+        "icons.jsx",
+        "shell.jsx",
+        "planning-data.jsx",
+        "planning-shapes.jsx",
+        "planning-panels.jsx",
+        "screen-planning.jsx",
+        "screens-rest.jsx",
+        "app.jsx"
+      ].forEach(function(src) {
+        document.write('<script type="text/babel" data-presets="react" src="' + src + '"><\/script>');
+      });
+    })();
+  </script>
+</body>
+</html>
