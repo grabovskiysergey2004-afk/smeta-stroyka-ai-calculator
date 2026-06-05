@@ -183,13 +183,7 @@ function loadFromStorage() {
   } catch { return null; }
 }
 function saveToStorage(project) {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(project));
-    if (window.localApi && window.localApi.saveCurrentProject) {
-      window.__lastProjectSave = window.localApi.saveCurrentProject(project, "Текущий проект");
-    }
-    return true;
-  } catch { return false; }
+  try { localStorage.setItem(LS_KEY, JSON.stringify(project)); return true; } catch { return false; }
 }
 
 // ============================================================
@@ -199,8 +193,6 @@ function PlanningScreen({ onNav }) {
   // -------- history (undo/redo) --------
   // history of project snapshots; index points to current
   const [project, setProjectRaw] = useState(() => loadFromStorage() || newEmptyProject(window.PL_DEFAULT_WORLD));
-  const [typedEngineReady, setTypedEngineReady] = useState(() => !!window.plTypedEstimateEngine);
-  const [priceCatalogVersion, setPriceCatalogVersion] = useState(0);
   const historyRef = useRef({ past: [], future: [] });
   const skipHistoryRef = useRef(false);
   const setProject = useCallback((updater, opts = {}) => {
@@ -290,7 +282,6 @@ function PlanningScreen({ onNav }) {
   const [spaceDown, setSpaceDown] = useState(false);
   const [altDown, setAltDown] = useState(false);
   const [savedAt, setSavedAt] = useState(null);
-  const localProjectLoadedRef = useRef(!(window.localApi && window.localApi.loadCurrentProject));
   const [handleDrag, setHandleDrag] = useState(null);
   const [quickStartOpen, setQuickStartOpen] = useState(false);
   const [demoModeOpen, setDemoModeOpen] = useState(false);
@@ -330,41 +321,6 @@ function PlanningScreen({ onNav }) {
   const world = level.world || project.world;
   const isRoofLevel = level.type === "roof" || level.type === "industrial_roof";
   const viewState = (project.levelsView && project.levelsView[level.id]) || defaultViewState();
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!(window.localApi && window.localApi.loadCurrentProject)) {
-      localProjectLoadedRef.current = true;
-      return;
-    }
-
-    window.localApi.loadCurrentProject()
-      .then((record) => {
-        if (cancelled || !record || !record.project) return;
-        const migrated = migrateProject(record.project);
-        if (!migrated || !migrated.levels || !migrated.levelsData) return;
-        setProjectRaw(migrated);
-        setSavedAt(record.updatedAt ? new Date(record.updatedAt) : new Date());
-        window.showToast({
-          title: "Проект загружен из client-data",
-          body: "Используется локальный файл client-data/projects/current-project.json.",
-          kind: "info",
-        });
-      })
-      .catch(() => {
-        window.showToast({
-          title: "Локальный проект не загружен",
-          body: "Продолжаем с браузерной копией. Проверьте локальный сервер, если это повторяется.",
-          kind: "info",
-        });
-      })
-      .finally(() => {
-        localProjectLoadedRef.current = true;
-      });
-
-    return () => { cancelled = true; };
-  }, []);
 
   function setViewState(updater, skipHistory = true) {
     setProject(p => {
@@ -464,32 +420,7 @@ function PlanningScreen({ onNav }) {
     }
     return base;
   }, [data, level.type]);
-  const legacyEstimateDraft = useMemo(() => getEstimateDraft(data, level.type), [data, level.type]);
-  const typedEstimateResult = useMemo(() => {
-    if (!typedEngineReady || !window.plTypedEstimateEngine) return null;
-    try {
-      return window.plTypedEstimateEngine.generate(project);
-    } catch (error) {
-      console.warn("Typed estimate engine failed, falling back to legacy draft.", error);
-      return null;
-    }
-    }, [project, typedEngineReady, priceCatalogVersion]);
-  const estimateDraft = useMemo(() => {
-    const typedRows = typedEstimateResult?.rows?.filter(r => r.levelId === level.id) || [];
-    return typedRows.length ? typedRows : legacyEstimateDraft;
-  }, [typedEstimateResult, level.id, legacyEstimateDraft]);
-
-  useEffect(() => {
-    const markReady = () => setTypedEngineReady(!!window.plTypedEstimateEngine);
-    const markPriceCatalogUpdated = () => setPriceCatalogVersion(v => v + 1);
-    window.addEventListener("pl-typed-estimate-ready", markReady);
-    window.addEventListener("pl-price-catalog-updated", markPriceCatalogUpdated);
-    markReady();
-    return () => {
-      window.removeEventListener("pl-typed-estimate-ready", markReady);
-      window.removeEventListener("pl-price-catalog-updated", markPriceCatalogUpdated);
-    };
-  }, []);
+  const estimateDraft = useMemo(() => getEstimateDraft(data, level.type), [data, level.type]);
 
   // -------- Keyboard --------
   useEffect(() => {
@@ -552,7 +483,6 @@ function PlanningScreen({ onNav }) {
 
   // -------- Autosave --------
   useEffect(() => {
-    if ((window.localApi && window.localApi.saveCurrentProject) && !localProjectLoadedRef.current) return;
     const t = setTimeout(() => {
       if (saveToStorage(project)) setSavedAt(new Date());
     }, 800);
@@ -1180,15 +1110,11 @@ function PlanningScreen({ onNav }) {
   // ===== RESULT CENTER + KP + EXPORT =====
   // Compute "all rows" with row overrides applied
   const allRowsRaw = useMemo(() => {
-    if (typedEstimateResult?.rows?.length) {
-      if (estimateScope === "project") return typedEstimateResult.rows;
-      return typedEstimateResult.rows.filter(r => r.levelId === level.id);
-    }
     if (estimateScope === "project") {
       return window.plGetProjectEstimateRows(project) || [];
     }
     return (estimateDraft || []).map(r => ({ ...r, levelName: level.name, levelId: level.id, levelType: level.type }));
-  }, [estimateScope, project, estimateDraft, typedEstimateResult, level.id, level.name, level.type]);
+  }, [estimateScope, project, estimateDraft, level.id, level.name, level.type]);
 
   const allRows = useMemo(() => {
     return allRowsRaw.map(r => {
@@ -1692,8 +1618,7 @@ function PlanningScreen({ onNav }) {
   // -------- Mode-level actions --------
   function handleCalculate() {
     setCalculated(true); setShowResult(true);
-    const typedTotal = typedEstimateResult?.estimate?.totals?.grandTotal;
-    window.showToast({ title: "Смета успешно рассчитана", body: `Итого: ₽ ${formatRu(typedTotal || stats.total)}` });
+    window.showToast({ title: "Смета успешно рассчитана", body: `Итого: ₽ ${formatRu(stats.total)}` });
   }
   function handleClear() {
     if (!window.confirm("Очистить уровень? Действие нельзя отменить.")) return;

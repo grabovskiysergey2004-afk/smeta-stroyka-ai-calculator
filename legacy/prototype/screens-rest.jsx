@@ -1,5 +1,5 @@
 /* global React, I, formatRu */
-const { useState: useSt, useEffect: useEff, useMemo: useMm } = React;
+const { useState: useSt, useMemo: useMm } = React;
 
 // Helper for buttons that don't have a real implementation in the demo —
 // gives a consistent, honest toast instead of a dead click.
@@ -875,197 +875,7 @@ function PricesScreen() {
   );
 }
 
-function priceKindLabel(kind) {
-  return ({ csv: "CSV", xlsx: "Excel", pdf: "PDF", manual: "ручной каталог" }[kind] || kind || "источник");
-}
-
-function PricesScreenV2() {
-  const [cat, setCat] = useSt("Все");
-  const [query, setQuery] = useSt("");
-  const [catalog, setCatalog] = useSt(() => window.plTypedEstimateEngine?.getPriceCatalog?.() || null);
-  const [busy, setBusy] = useSt(false);
-
-  useEff(() => {
-    let alive = true;
-    const refresh = async () => {
-      const next = await window.plPriceCatalogTools?.loadCurrent?.();
-      if (alive && next) setCatalog(next);
-    };
-    const onUpdated = () => setCatalog(window.plTypedEstimateEngine?.getPriceCatalog?.() || null);
-    window.addEventListener("pl-price-catalog-updated", onUpdated);
-    refresh().catch(() => onUpdated());
-    return () => {
-      alive = false;
-      window.removeEventListener("pl-price-catalog-updated", onUpdated);
-    };
-  }, []);
-
-  const summary = catalog && window.plPriceCatalogTools?.summarize
-    ? window.plPriceCatalogTools.summarize(catalog)
-    : null;
-  const categories = useMm(() => {
-    const counts = new Map();
-    for (const item of catalog?.items || []) counts.set(item.category, (counts.get(item.category) || 0) + 1);
-    return Array.from(counts.entries()).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [catalog]);
-  const rows = useMm(() => {
-    const q = query.trim().toLowerCase();
-    return (catalog?.items || [])
-      .filter(r => cat === "Все" || r.category === cat)
-      .filter(r => !q || `${r.code} ${r.name} ${r.category}`.toLowerCase().includes(q));
-  }, [catalog, cat, query]);
-
-  async function handleImportFile(ev) {
-    const file = ev.target.files && ev.target.files[0];
-    ev.target.value = "";
-    if (!file) return;
-    if (!window.plPriceCatalogTools) {
-      window.showToast({ title: "Импорт недоступен", body: "Typed price tools ещё не загружены.", kind: "warning" });
-      return;
-    }
-    setBusy(true);
-    try {
-      const text = await file.text();
-      const parsed = window.plPriceCatalogTools.parse({
-        fileName: file.name,
-        text,
-        supplierName: file.name.replace(/\.[^.]+$/, ""),
-      });
-      const merged = window.plPriceCatalogTools.mergeWithSample(parsed);
-      await window.plPriceCatalogTools.saveCurrent(merged);
-      setCatalog(merged);
-      const importedSummary = window.plPriceCatalogTools.summarize(merged);
-      window.showToast({
-        title: "Прайс загружен",
-        body: `${importedSummary.items} позиций · проверка требуется: ${importedSummary.reviewItems}`,
-        kind: "success",
-      });
-    } catch (error) {
-      window.showToast({
-        title: "Не удалось импортировать прайс",
-        body: error instanceof Error ? error.message : "Проверьте CSV/JSON файл.",
-        kind: "danger",
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function handleSavePriceCatalog() {
-    if (!catalog || !window.localApi?.saveCurrentPriceCatalog) {
-      window.showToast({
-        title: "Прайс ещё не готов",
-        body: "Дождитесь загрузки каталога или импортируйте CSV/JSON файл.",
-        kind: "warning",
-      });
-      return;
-    }
-    window.localApi
-      .saveCurrentPriceCatalog(catalog)
-      .then(() =>
-        window.showToast({
-          title: "Прайс сохранён",
-          body: "Каталог записан в client-data/prices/current-catalog.json",
-        }),
-      )
-      .catch((error) =>
-        window.showToast({
-          title: "Не удалось сохранить прайс",
-          body: error instanceof Error ? error.message : "Проверьте локальное API.",
-          kind: "danger",
-        }),
-      );
-  }
-
-  return (
-    <div className="page">
-      <input id="price-import-file" type="file" accept=".csv,.json" onChange={handleImportFile} style={{ display: "none" }}/>
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Прайс-лист</h1>
-          <p className="page-subtitle">
-            {summary
-              ? `${summary.sourceName} · ${summary.items} позиций · ${summary.categories} категорий · проверка: ${summary.reviewItems}`
-              : "Загрузите CSV/JSON прайс, чтобы смета считалась по вашим ценам"}
-          </p>
-        </div>
-        <div className="page-actions">
-          <button className="btn btn-secondary" disabled={busy} onClick={() => document.getElementById("price-import-file")?.click()}><I.Upload size={14}/> Загрузить CSV / JSON</button>
-          <button className="btn btn-secondary" onClick={mock("AI-обновление цен", "На следующем этапе можно подключить поиск и сопоставление прайсов поставщиков.")}><I.Sparkles size={14}/> Обновить цены</button>
-          <button className="btn btn-secondary" onClick={handleSavePriceCatalog}><I.Save size={14}/> Сохранить прайс</button>
-          <button className="btn btn-primary" onClick={mock("Добавить позицию", "Ручная форма позиции появится после импорта и маппинга колонок.")}><I.Plus size={14}/> Добавить позицию</button>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 18 }}>
-        <div className="card" style={{ padding: 6 }}>
-          <button
-            onClick={() => setCat("Все")}
-            style={{ display: "flex", width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 13, color: cat === "Все" ? "var(--text)" : "var(--text-secondary)", background: cat === "Все" ? "var(--bg)" : "transparent", fontWeight: cat === "Все" ? 600 : 400 }}
-          >
-            <span style={{ flex: 1, textAlign: "left" }}>Все категории</span>
-            <span className="dim">{catalog?.items?.length || 0}</span>
-          </button>
-          <div style={{ height: 1, background: "var(--border-soft)", margin: "6px 0" }}/>
-          {categories.map(c => (
-            <button key={c.name}
-              onClick={() => setCat(c.name)}
-              style={{ display: "flex", width: "100%", padding: "8px 12px", borderRadius: 6, fontSize: 13, color: cat === c.name ? "var(--text)" : "var(--text-secondary)", background: cat === c.name ? "var(--bg)" : "transparent", fontWeight: cat === c.name ? 600 : 400 }}>
-              <span style={{ flex: 1, textAlign: "left" }}>{c.name}</span>
-              <span className="dim">{c.count}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="table-wrap">
-          <div className="table-toolbar">
-            <div className="left">
-              <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--bg)", border: "1px solid var(--border)", borderRadius: 6, padding: "4px 8px", width: 280 }}>
-                <I.Search size={13} style={{ color: "var(--text-muted)" }}/>
-                <input value={query} onChange={e => setQuery(e.target.value)} style={{ border: "none", outline: "none", background: "transparent", fontSize: 12.5, flex: 1 }} placeholder="Поиск по коду, категории или позиции..."/>
-              </div>
-              <button className="btn btn-ghost btn-sm" onClick={() => window.showToast({ title: "Источник цен", body: summary ? `${priceKindLabel(summary.kind)} · ${summary.supplierName || "без поставщика"}` : "Демо-каталог", kind: "info" })}><I.Filter size={13}/> Источник</button>
-              <button className="btn btn-ghost btn-sm" onClick={() => window.showToast({ title: "Дата импорта", body: summary?.importedAt || "Демо-каталог", kind: "info" })}><I.Calendar size={13}/> Обновлено</button>
-            </div>
-            <div className="right">
-              <span className="dim" style={{ fontSize: 12 }}>{rows.length} позиций</span>
-            </div>
-          </div>
-          <table className="t">
-            <thead>
-              <tr>
-                <th>Категория</th>
-                <th>Код</th>
-                <th>Позиция</th>
-                <th>Ед.</th>
-                <th className="num">Материал, ₽</th>
-                <th className="num">Работа, ₽</th>
-                <th>Статус</th>
-                <th style={{ width: 40 }}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td><span className="badge badge-neutral">{r.category}</span></td>
-                  <td className="dim">{r.code}</td>
-                  <td className="strong">{r.name}</td>
-                  <td className="dim">{r.unit}</td>
-                  <td className="num">{formatRu(r.materialUnitPrice)}</td>
-                  <td className="num">{formatRu(r.laborUnitPrice)}</td>
-                  <td><span className={`badge ${r.requiresReview ? "badge-warning" : "badge-success"}`}>{r.requiresReview ? "Проверить" : "Готово"}</span></td>
-                  <td><button className="icon-btn" onClick={(ev) => { ev.stopPropagation(); window.showToast({ title: r.code, body: `${r.name} · ${r.unit} · источник: ${summary?.sourceName || "Демо-каталог"}`, kind: "info" }); }}><I.More size={15}/></button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-window.PricesScreen = PricesScreenV2;
+window.PricesScreen = PricesScreen;
 
 // ============================================================
 // Проекты
@@ -1167,102 +977,9 @@ window.ProjectsScreen = ProjectsScreen;
 // ============================================================
 // Настройки
 // ============================================================
-const DEFAULT_COMPANY_PROFILE = {
-  name: "ООО «СтройКомфорт»",
-  inn: "7716123456",
-  kpp: "771601001",
-  ogrn: "1147746123456",
-  legalAddress: "г. Москва, ул. Ленина 42, оф. 305",
-  bankAccount: "40702 810 5 0000 0123456",
-  bankName: "ПАО Сбербанк",
-  defaultMarginPercent: "22",
-  vatPercent: "20",
-  proposalValidityDays: "14",
-  warrantyMonths: "60",
-  advancePercent: "30",
-  currency: "RUB",
-};
-
 function SettingsScreen() {
   const [activeSection, setActiveSection] = useSt(0);
-  const [companyProfile, setCompanyProfile] = useSt(DEFAULT_COMPANY_PROFILE);
-  const [storageInfo, setStorageInfo] = useSt({ status: "checking", message: "Проверяем client-data..." });
   const sections = ["Профиль компании", "Команда (4)", "Тарифы и оплата", "Интеграции", "Шаблоны КП", "Шаблоны смет", "Уведомления", "Безопасность"];
-
-  useEff(() => {
-    let cancelled = false;
-
-    if (!(window.localApi && window.localApi.loadCompanyProfile)) {
-      setStorageInfo({ status: "offline", message: "Локальный API недоступен. Данные останутся только в браузере." });
-      return;
-    }
-
-    window.localApi.health()
-      .then(() => window.localApi.loadCompanyProfile())
-      .then((record) => {
-        if (cancelled) return;
-        if (record && record.profile) {
-          setCompanyProfile({ ...DEFAULT_COMPANY_PROFILE, ...record.profile });
-          setStorageInfo({
-            status: "ready",
-            message: `Профиль загружен из client-data/company/profile.json${record.updatedAt ? ` · ${new Date(record.updatedAt).toLocaleString("ru-RU")}` : ""}`,
-          });
-          return;
-        }
-        setStorageInfo({ status: "ready", message: "client-data готов. Профиль компании ещё не сохранён." });
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setStorageInfo({ status: "offline", message: "Не удалось подключиться к локальному API." });
-      });
-
-    return () => { cancelled = true; };
-  }, []);
-
-  const updateCompanyField = (field) => (event) => {
-    const value = event.target.value;
-    setCompanyProfile((profile) => ({ ...profile, [field]: value }));
-  };
-
-  const saveCompanyProfile = () => {
-    if (!(window.localApi && window.localApi.saveCompanyProfile)) {
-      localStorage.setItem("stroika.company.profile", JSON.stringify(companyProfile));
-      window.showToast({ title: "Профиль сохранён в браузере", body: "Локальный API недоступен.", kind: "info" });
-      return;
-    }
-
-    window.localApi.saveCompanyProfile(companyProfile)
-      .then((result) => {
-        setStorageInfo({
-          status: "ready",
-          message: `${result.file} · ${new Date(result.updatedAt).toLocaleString("ru-RU")}`,
-        });
-        window.showToast({ title: "Профиль сохранён", body: "Реквизиты записаны в client-data/company/profile.json." });
-      })
-      .catch((error) => {
-        window.showToast({ title: "Профиль не сохранён", body: error.message, kind: "info" });
-      });
-  };
-
-  const createBackup = () => {
-    if (!(window.localApi && window.localApi.createBackup)) {
-      window.showToast({ title: "Backup недоступен", body: "Запустите backup.bat из папки проекта.", kind: "info" });
-      return;
-    }
-
-    window.localApi.createBackup()
-      .then((result) => {
-        setStorageInfo({
-          status: "ready",
-          message: `Backup создан: ${result.file} · ${Math.max(1, Math.round(result.bytes / 1024))} КБ`,
-        });
-        window.showToast({ title: "Backup создан", body: result.file });
-      })
-      .catch((error) => {
-        window.showToast({ title: "Backup не создан", body: error.message, kind: "info" });
-      });
-  };
-
   return (
     <div className="page">
       <div className="page-header">
@@ -1296,31 +1013,17 @@ function SettingsScreen() {
           <div className="card">
             <div className="card-header"><h3 className="card-title">Профиль компании</h3></div>
             <div className="card-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-              <div className="field"><label className="field-label">Название</label><input className="input" value={companyProfile.name} onChange={updateCompanyField("name")}/></div>
-              <div className="field"><label className="field-label">ИНН</label><input className="input" value={companyProfile.inn} onChange={updateCompanyField("inn")}/></div>
-              <div className="field"><label className="field-label">КПП</label><input className="input" value={companyProfile.kpp} onChange={updateCompanyField("kpp")}/></div>
-              <div className="field"><label className="field-label">ОГРН</label><input className="input" value={companyProfile.ogrn} onChange={updateCompanyField("ogrn")}/></div>
-              <div className="field" style={{ gridColumn: "span 2" }}><label className="field-label">Юридический адрес</label><input className="input" value={companyProfile.legalAddress} onChange={updateCompanyField("legalAddress")}/></div>
-              <div className="field"><label className="field-label">Расчётный счёт</label><input className="input" value={companyProfile.bankAccount} onChange={updateCompanyField("bankAccount")}/></div>
-              <div className="field"><label className="field-label">Банк</label><input className="input" value={companyProfile.bankName} onChange={updateCompanyField("bankName")}/></div>
+              <div className="field"><label className="field-label">Название</label><input className="input" defaultValue="ООО «СтройКомфорт»"/></div>
+              <div className="field"><label className="field-label">ИНН</label><input className="input" defaultValue="7716123456"/></div>
+              <div className="field"><label className="field-label">КПП</label><input className="input" defaultValue="771601001"/></div>
+              <div className="field"><label className="field-label">ОГРН</label><input className="input" defaultValue="1147746123456"/></div>
+              <div className="field" style={{ gridColumn: "span 2" }}><label className="field-label">Юридический адрес</label><input className="input" defaultValue="г. Москва, ул. Ленина 42, оф. 305"/></div>
+              <div className="field"><label className="field-label">Расчётный счёт</label><input className="input" defaultValue="40702 810 5 0000 0123456"/></div>
+              <div className="field"><label className="field-label">Банк</label><input className="input" defaultValue="ПАО Сбербанк"/></div>
             </div>
             <div className="card-foot">
               <span className="dim" style={{ fontSize: 12 }}>Эти данные подставляются в КП и договоры автоматически.</span>
-              <button className="btn btn-primary btn-sm" onClick={saveCompanyProfile}><I.Save size={13}/> Сохранить</button>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <h3 className="card-title">Локальное хранение</h3>
-              <span className={`badge badge-${storageInfo.status === "ready" ? "success" : storageInfo.status === "checking" ? "warning" : "danger"}`}><span className="badge-dot"/>{storageInfo.status === "ready" ? "client-data" : storageInfo.status === "checking" ? "проверка" : "offline"}</span>
-            </div>
-            <div className="card-body">
-              <p className="dim" style={{ margin: 0, fontSize: 12.5 }}>{storageInfo.message}</p>
-            </div>
-            <div className="card-foot">
-              <span className="dim" style={{ fontSize: 12 }}>Backup сохраняет проекты, реквизиты, прайсы, PDF, шаблоны и экспорты в ZIP.</span>
-              <button className="btn btn-secondary btn-sm" onClick={createBackup}><I.Download size={13}/> Создать backup</button>
+              <button className="btn btn-primary btn-sm" onClick={() => window.showToast({ title: "Профиль сохранён", body: "Реквизиты будут подставляться в новые КП." })}><I.Save size={13}/> Сохранить</button>
             </div>
           </div>
 
@@ -1329,11 +1032,11 @@ function SettingsScreen() {
               <h3 className="card-title">Базовые настройки сметы</h3>
             </div>
             <div className="card-body" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-              <div className="field"><label className="field-label">Наценка по умолчанию</label><div className="input-with-suffix"><input className="input" value={companyProfile.defaultMarginPercent} onChange={updateCompanyField("defaultMarginPercent")}/><span className="suffix">%</span></div></div>
-              <div className="field"><label className="field-label">НДС</label><div className="input-with-suffix"><input className="input" value={companyProfile.vatPercent} onChange={updateCompanyField("vatPercent")}/><span className="suffix">%</span></div></div>
-              <div className="field"><label className="field-label">Срок действия КП</label><div className="input-with-suffix"><input className="input" value={companyProfile.proposalValidityDays} onChange={updateCompanyField("proposalValidityDays")}/><span className="suffix">дней</span></div></div>
-              <div className="field"><label className="field-label">Стандартная гарантия</label><div className="input-with-suffix"><input className="input" value={companyProfile.warrantyMonths} onChange={updateCompanyField("warrantyMonths")}/><span className="suffix">мес.</span></div></div>
-              <div className="field"><label className="field-label">Аванс</label><div className="input-with-suffix"><input className="input" value={companyProfile.advancePercent} onChange={updateCompanyField("advancePercent")}/><span className="suffix">%</span></div></div>
+              <div className="field"><label className="field-label">Наценка по умолчанию</label><div className="input-with-suffix"><input className="input" defaultValue="22"/><span className="suffix">%</span></div></div>
+              <div className="field"><label className="field-label">НДС</label><div className="input-with-suffix"><input className="input" defaultValue="20"/><span className="suffix">%</span></div></div>
+              <div className="field"><label className="field-label">Срок действия КП</label><div className="input-with-suffix"><input className="input" defaultValue="14"/><span className="suffix">дней</span></div></div>
+              <div className="field"><label className="field-label">Стандартная гарантия</label><div className="input-with-suffix"><input className="input" defaultValue="60"/><span className="suffix">мес.</span></div></div>
+              <div className="field"><label className="field-label">Аванс</label><div className="input-with-suffix"><input className="input" defaultValue="30"/><span className="suffix">%</span></div></div>
               <div className="field"><label className="field-label">Валюта</label><select className="select"><option>Российский рубль (₽)</option></select></div>
             </div>
           </div>

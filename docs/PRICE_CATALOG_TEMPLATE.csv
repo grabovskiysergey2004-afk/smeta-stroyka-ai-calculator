@@ -1,0 +1,8 @@
+code;category;name;unit;material;work;requiresReview
+wall.gasblock400.m2;Коробка;Наружная стена из газоблока 400 мм;m2;3400;2100;false
+partition.gasblock100.m2;Коробка;Перегородка из газоблока 100 мм;m2;1250;1300;false
+window.basic.pcs;Окна и двери;Окно: поставка и монтаж;pcs;18000;4500;true
+door.basic.pcs;Окна и двери;Дверь: поставка и монтаж;pcs;12000;3500;false
+floor.draft.m2;Отделка;Черновой пол по площади помещения;m2;850;700;false
+roof.metal.m2;Кровля;Металлочерепица: материал и монтаж;m2;2300;1700;false
+foundation.slab.concrete.m3;Фундамент;Бетон для монолитной плиты;m3;7600;3800;false

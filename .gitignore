@@ -7,3 +7,7 @@ dist/
 *.log
 Thumbs.db
 .DS_Store
+client-data/**
+!client-data/
+!client-data/**/
+!client-data/**/.gitkeep
